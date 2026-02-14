@@ -1,0 +1,48 @@
+# EAP Configuration for EntraRadius
+# This configures EAP-TTLS to use our custom inner-tunnel-entra virtual server
+
+eap {
+    default_eap_type = ttls
+    timer_expire = 60
+    ignore_unknown_eap_types = no
+    cisco_accounting_username_bug = no
+    max_sessions = ${max_requests}
+
+    #
+    # EAP-TTLS Configuration
+    #
+    ttls {
+        # Point to our custom inner tunnel that calls the REST API
+        virtual_server = "inner-tunnel-entra"
+
+        # Use PAP for inner authentication
+        default_eap_type = md5
+        copy_request_to_tunnel = yes
+        use_tunneled_reply = yes
+
+        # Require client certificate validation (set to no for testing)
+        require_client_cert = no
+    }
+
+    #
+    # TLS Configuration (required for TTLS)
+    #
+    tls {
+        # Server certificate paths (use self-signed for testing)
+        private_key_password = whatever
+        private_key_file = /etc/freeradius/certs/server.key
+        certificate_file = /etc/freeradius/certs/server.pem
+        ca_file = /etc/freeradius/certs/ca.pem
+        ca_path = /etc/freeradius/certs
+
+        # Cipher configuration
+        cipher_list = "DEFAULT"
+        cipher_server_preference = no
+
+        # TLS version requirements
+        tls_min_version = "1.2"
+
+        # Certificate verification (disabled for testing)
+        check_cert_cn = no
+    }
+}

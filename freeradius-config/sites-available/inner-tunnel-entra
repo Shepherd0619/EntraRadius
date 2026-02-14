@@ -1,0 +1,75 @@
+#
+# Inner Tunnel Virtual Server for EAP-TTLS
+# This handles the inner PAP authentication and calls the EntraRadius REST API
+#
+
+server inner-tunnel-entra {
+    #
+    # This virtual server is only used for inner tunnel requests
+    #
+    listen {
+        ipaddr = 127.0.0.1
+        port = 18120
+        type = auth
+    }
+
+    #
+    # Authorization for inner tunnel
+    #
+    authorize {
+        # Filter and normalize username
+        filter_username
+
+        # Check for valid username format
+        # Entra expects user@domain.com
+        if (&User-Name !~ /@/) {
+            reject
+        }
+
+        # Set Auth-Type to PAP for cleartext password authentication
+        update control {
+            Auth-Type := PAP
+        }
+    }
+
+    #
+    # Authentication for inner tunnel
+    #
+    authenticate {
+        #
+        # PAP authentication calls the REST API
+        #
+        Auth-Type PAP {
+            rest
+
+            # Check the HTTP status code to determine authentication result
+            # The REST module adds REST-HTTP-Status-Code to the reply
+            if (&reply:REST-HTTP-Status-Code == 200) {
+                # Authentication successful (either via Entra or cache)
+                ok
+            }
+            elsif (&reply:REST-HTTP-Status-Code == 401) {
+                # Invalid credentials
+                reject
+            }
+            elsif (&reply:REST-HTTP-Status-Code == 503) {
+                # Service unavailable (Entra down and not in cache)
+                reject
+            }
+            else {
+                # Any other status code (400, 500, etc.)
+                reject
+            }
+        }
+    }
+
+    #
+    # Post-authentication
+    #
+    post-auth {
+        # Log successful authentication
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+        }
+    }
+}

@@ -1,0 +1,141 @@
+#
+# EntraRadius Virtual Server Configuration
+# This virtual server authenticates users against Microsoft Entra via the EntraRadius API
+#
+
+server entra-radius {
+    #
+    # Listen on the standard RADIUS authentication port
+    #
+    listen {
+        type = auth
+        ipaddr = *
+        port = 1812
+
+        # Limit to specific clients if needed
+        # clients = per_socket_clients
+    }
+
+    #
+    # Listen on the standard RADIUS accounting port (optional)
+    #
+    listen {
+        type = acct
+        ipaddr = *
+        port = 1813
+    }
+
+    #
+    # Authorization phase
+    #
+    authorize {
+        # Filter username to ensure it's in proper format
+        # Entra expects user@domain.com or user@tenant.onmicrosoft.com
+        filter_username
+
+        # Preprocess the request
+        preprocess
+
+        # Log the authentication attempt
+        -sql  # Optional: log to SQL if configured
+
+        # For debugging, you can log detailed info
+        # linelog
+
+        # Handle EAP requests (EAP-TTLS outer tunnel)
+        eap {
+            ok = return
+        }
+
+        # For non-EAP or inner tunnel PAP authentication
+        # The actual validation is done by the REST API
+        if (!EAP-Message) {
+            update control {
+                Auth-Type := rest
+            }
+        }
+    }
+
+    #
+    # Authentication phase
+    #
+    authenticate {
+        #
+        # EAP authentication (for EAP-TTLS outer tunnel)
+        #
+        Auth-Type EAP {
+            eap
+        }
+
+        #
+        # PAP authentication (for EAP-TTLS inner authentication)
+        # This calls the REST API to validate against Entra
+        #
+        Auth-Type PAP {
+            rest
+        }
+
+        #
+        # REST authentication (for non-EAP direct auth)
+        #
+        Auth-Type rest {
+            rest
+        }
+    }
+
+    #
+    # Post-authentication phase
+    #
+    post-auth {
+        # Update reply with standard RADIUS attributes
+        update reply {
+            # You can add additional RADIUS attributes here
+            # For example, VLAN assignment based on groups
+        }
+
+        # Log successful authentication
+        -sql  # Optional
+
+        # Execute post-auth actions
+        exec
+
+        # Remove password from logs for security
+        remove_reply_message_if_eap
+    }
+
+    #
+    # Handle authentication failures
+    #
+    Post-Auth-Type REJECT {
+        # Log failed attempts
+        attr_filter.access_reject
+
+        # Optional: log to SQL
+        -sql
+
+        # Remove sensitive data from logs
+        remove_reply_message_if_eap
+    }
+
+    #
+    # Accounting phase (optional)
+    #
+    accounting {
+        # Detail files for accounting records
+        detail
+
+        # Update accounting in database
+        -sql
+
+        # Execute accounting scripts
+        exec
+    }
+
+    #
+    # Session management (optional)
+    #
+    session {
+        # Track active sessions
+        # radutmp
+    }
+}

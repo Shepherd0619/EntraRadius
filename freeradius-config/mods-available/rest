@@ -1,0 +1,100 @@
+rest {
+    #
+    # EntraRadius REST Module Configuration
+    # This module connects FreeRADIUS to the EntraRadius API for Microsoft Entra authentication
+    #
+
+    # Connection configuration
+    connect_uri = "https://localhost:5001"
+
+    # Connection pool settings
+    connect_timeout = 5.0
+    pool {
+        start = 5
+        min = 4
+        max = 10
+        spare = 3
+        uses = 0
+        lifetime = 0
+        idle_timeout = 60
+        retry_delay = 1
+        cleanup_interval = 30
+    }
+
+    #
+    # HTTP client configuration
+    #
+    http {
+        # Negotiate TLS version
+        tls {
+            # For development with self-signed certificates
+            # IMPORTANT: In production, use proper CA certificates
+            ca_file = "${certdir}/ca.pem"
+            # For self-signed dev certs, you may need to disable verification
+            # check_cert = no
+            # check_cert_cn = no
+        }
+    }
+
+    #
+    # Authentication section - called during authentication phase
+    #
+    authenticate {
+        uri = "${..connect_uri}/api/radius/authenticate"
+        method = 'post'
+
+        # Request body - JSON format required by EntraRadius API
+        body = 'json'
+        data = '{"userName": "%{User-Name}", "password": "%{User-Password}"}'
+
+        # Request headers
+        header {
+            Content-Type = 'application/json'
+        }
+
+        # Authentication timeout
+        timeout = 10.0
+
+        # Response handling
+        # Map HTTP status codes to RADIUS responses
+        #
+        # 200 = Success (authenticated via Entra or cache)
+        # 401 = Invalid credentials
+        # 400 = Bad request (missing credentials)
+        # 503 = Service unavailable (Entra down and not in cache)
+
+        # Success condition
+        # Any 2xx response is considered success
+        force_to = 'plain'
+    }
+
+    #
+    # Authorize section - called during authorization phase
+    # For basic authentication, we can use the authenticate endpoint
+    #
+    authorize {
+        uri = "${..connect_uri}/api/radius/authenticate"
+        method = 'post'
+        body = 'json'
+        data = '{"userName": "%{User-Name}", "password": "%{User-Password}"}'
+
+        header {
+            Content-Type = 'application/json'
+        }
+
+        timeout = 10.0
+    }
+
+    #
+    # Body interpretation
+    #
+    body_json {
+        # If the API returns JSON, we can extract values
+        # The EntraRadius API returns:
+        # {
+        #   "success": true/false,
+        #   "source": "entra" or "cache",
+        #   "message": "Authentication successful"
+        # }
+    }
+}

@@ -1,0 +1,13 @@
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/.git
+**/.gitignore
+**/.gitattributes
+**/docker-compose*
+**/Dockerfile*
+**/*.md
+**/.env
+**/LICENSE.txt
+**/*.http

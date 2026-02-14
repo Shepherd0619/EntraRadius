@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  entraradius:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: entra-radius:latest
+    container_name: entraradius-api
+    # No ports exposed - only accessible within the radius-network
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      # Override Entra configuration via environment variables if needed
+      # - EntraConfiguration__TenantId=your-tenant-id
+      # - EntraConfiguration__ClientId=your-client-id
+      # - EntraConfiguration__CacheDurationMinutes=60
+    networks:
+      - radius-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  freeradius:
+    image: freeradius/freeradius-server:latest
+    container_name: freeradius-server
+    ports:
+      - "1812:1812/udp"  # RADIUS authentication
+      - "1813:1813/udp"  # RADIUS accounting
+    volumes:
+      # Mount custom FreeRADIUS configuration
+      - ./freeradius-config/sites-available/entra-radius:/etc/freeradius/sites-available/entra-radius
+      - ./freeradius-config/sites-available/inner-tunnel-entra:/etc/freeradius/sites-available/inner-tunnel-entra
+      - ./freeradius-config/mods-available/rest.docker:/etc/freeradius/mods-available/rest
+      - ./freeradius-config/mods-available/eap-entra:/etc/freeradius/mods-available/eap
+      - ./freeradius-config/clients.conf:/etc/freeradius/clients.conf
+      # Enable the entra-radius site (create a symlink)
+      - ./freeradius-config/sites-available/entra-radius:/etc/freeradius/sites-enabled/entra-radius
+      - ./freeradius-config/sites-available/inner-tunnel-entra:/etc/freeradius/sites-enabled/inner-tunnel-entra
+      # Enable the rest module (create a symlink)
+      - ./freeradius-config/mods-available/rest.docker:/etc/freeradius/mods-enabled/rest
+    environment:
+      # FreeRADIUS will connect to the EntraRadius API via the service name
+      - ENTRARADIUS_URL=http://entraradius:8080
+    networks:
+      - radius-network
+    depends_on:
+      entraradius:
+        condition: service_healthy
+    restart: unless-stopped
+    # Workaround for Windows Docker permission issues (not needed on Linux)
+    entrypoint: /bin/sh -c "chmod 640 /etc/freeradius/clients.conf /etc/freeradius/sites-available/entra-radius /etc/freeradius/sites-enabled/entra-radius /etc/freeradius/sites-available/inner-tunnel-entra /etc/freeradius/sites-enabled/inner-tunnel-entra /etc/freeradius/mods-available/rest /etc/freeradius/mods-enabled/rest /etc/freeradius/mods-available/eap /etc/freeradius/mods-enabled/eap && chown freerad:freerad /etc/freeradius/clients.conf /etc/freeradius/sites-available/entra-radius /etc/freeradius/sites-enabled/entra-radius /etc/freeradius/sites-available/inner-tunnel-entra /etc/freeradius/sites-enabled/inner-tunnel-entra /etc/freeradius/mods-available/rest /etc/freeradius/mods-enabled/rest /etc/freeradius/mods-available/eap /etc/freeradius/mods-enabled/eap && chmod 640 /etc/freeradius/certs/server.key /etc/freeradius/certs/server.pem /etc/freeradius/certs/ca.pem && chown freerad:freerad /etc/freeradius/certs/server.key /etc/freeradius/certs/server.pem /etc/freeradius/certs/ca.pem && rm -f /etc/freeradius/sites-enabled/default /etc/freeradius/sites-enabled/inner-tunnel && exec freeradius -X"
+
+networks:
+  radius-network:
+    driver: bridge

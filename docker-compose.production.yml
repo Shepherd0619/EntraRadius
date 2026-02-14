@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  entraradius:
+    image: entra-radius:latest
+    container_name: entraradius-api
+    # No ports exposed - only accessible within the radius-network
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      # Override Entra configuration via environment variables if needed
+      # - EntraConfiguration__TenantId=your-tenant-id
+      # - EntraConfiguration__ClientId=your-client-id
+      # - EntraConfiguration__CacheDurationMinutes=60
+    networks:
+      - radius-network
+    restart: unless-stopped
+
+  freeradius:
+    image: freeradius/freeradius-server:latest
+    container_name: freeradius-server
+    ports:
+      - "1812:1812/udp"  # RADIUS authentication
+      - "1813:1813/udp"  # RADIUS accounting
+    volumes:
+      # Mount custom FreeRADIUS configuration
+      - ./freeradius-config/sites-available/entra-radius:/etc/raddb/sites-available/entra-radius:ro
+      - ./freeradius-config/mods-available/rest.docker:/etc/raddb/mods-available/rest:ro
+      - ./freeradius-config/clients.conf:/etc/raddb/clients.conf:ro
+      # Enable the entra-radius site (create a symlink)
+      - ./freeradius-config/sites-available/entra-radius:/etc/raddb/sites-enabled/entra-radius:ro
+      # Enable the rest module (create a symlink)
+      - ./freeradius-config/mods-available/rest.docker:/etc/raddb/mods-enabled/rest:ro
+    environment:
+      # FreeRADIUS will connect to the EntraRadius API via the service name
+      - ENTRARADIUS_URL=http://entraradius:8080
+    networks:
+      - radius-network
+    depends_on:
+      - entraradius
+    restart: unless-stopped
+    command: ["-X"]  # Run in debug mode for initial testing, remove -X for production
+
+networks:
+  radius-network:
+    driver: bridge
