@@ -15,6 +15,12 @@ services:
     networks:
       - radius-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   freeradius:
     image: freeradius/freeradius-server:latest
@@ -25,21 +31,35 @@ services:
     volumes:
       # Mount custom FreeRADIUS configuration
       - ./freeradius-config/sites-available/entra-radius:/etc/raddb/sites-available/entra-radius:ro
+      - ./freeradius-config/sites-available/inner-tunnel-entra:/etc/raddb/sites-available/inner-tunnel-entra:ro
       - ./freeradius-config/mods-available/rest.docker:/etc/raddb/mods-available/rest:ro
+      - ./freeradius-config/mods-available/eap-entra:/etc/raddb/mods-available/eap:ro
       - ./freeradius-config/clients.conf:/etc/raddb/clients.conf:ro
       # Enable the entra-radius site (create a symlink)
       - ./freeradius-config/sites-available/entra-radius:/etc/raddb/sites-enabled/entra-radius:ro
+      - ./freeradius-config/sites-available/inner-tunnel-entra:/etc/raddb/sites-enabled/inner-tunnel-entra:ro
       # Enable the rest module (create a symlink)
       - ./freeradius-config/mods-available/rest.docker:/etc/raddb/mods-enabled/rest:ro
+      # Mount production TLS/SSL certificates for EAP-TTLS
+      - ./freeradius-config/certs/server.key:/etc/raddb/certs/server.key:ro
+      - ./freeradius-config/certs/server.pem:/etc/raddb/certs/server.pem:ro
+      - ./freeradius-config/certs/ca.pem:/etc/raddb/certs/ca.pem:ro
     environment:
       # FreeRADIUS will connect to the EntraRadius API via the service name
       - ENTRARADIUS_URL=http://entraradius:8080
     networks:
       - radius-network
     depends_on:
-      - entraradius
+      entraradius:
+        condition: service_healthy
     restart: unless-stopped
-    command: ["-X"]  # Run in debug mode for initial testing, remove -X for production
+    # Set up certificate permissions and run FreeRADIUS
+    entrypoint: /bin/sh -c "
+      chmod 640 /etc/raddb/certs/server.key /etc/raddb/certs/server.pem /etc/raddb/certs/ca.pem 2>/dev/null || true &&
+      chown freerad:freerad /etc/raddb/certs/server.key /etc/raddb/certs/server.pem /etc/raddb/certs/ca.pem 2>/dev/null || true &&
+      rm -f /etc/raddb/sites-enabled/default /etc/raddb/sites-enabled/inner-tunnel &&
+      exec freeradius -f
+      "
 
 networks:
   radius-network:

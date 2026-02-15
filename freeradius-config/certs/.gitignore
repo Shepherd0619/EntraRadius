@@ -1,0 +1,11 @@
+# Ignore all certificate files to prevent committing sensitive keys
+*.key
+*.pem
+*.crt
+*.pfx
+*.p12
+*.der
+
+# Keep the README
+!README.md
+!.gitignore
