@@ -40,6 +40,12 @@ namespace EntraRadius.Services
             }
             catch (MsalServiceException ex)
             {
+                if(ex.ErrorCode == "invalid_grant")
+                {
+                    _logger.LogWarning(ex, "Invalid credentials for user {Username}", username);
+                    return false;
+                }
+
                 _logger.LogError(ex, "Entra service error during authentication for user {Username}: {ErrorCode}", username, ex.ErrorCode);
                 throw new EntraServiceException("Entra service is unreachable or returned an error", ex);
             }
