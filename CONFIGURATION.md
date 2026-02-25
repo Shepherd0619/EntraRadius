@@ -21,10 +21,20 @@ EntraRadius authenticates users against Microsoft Entra using the ROPC (Resource
    - Enable "Allow public client flows" (required for ROPC)
    - Click "Save"
 
-3. **API Permissions** (if needed):
+3. **API Permissions**:
    - Go to "API permissions"
-   - Add required permissions (e.g., User.Read)
-   - Grant admin consent if necessary
+   - Grant admin consent for `User.Read`.
+
+4. **Add Redirect URI**
+   - Go to "Authentication"
+   - Add a redirect URI (e.g., `https://localhost:5001`, content doesn't matter).
+
+> [!WARNING]
+> Adding redirect URI is required to exclude this app from conditional access policies that block ROPC for MFA.
+> 
+> If you don't add a redirect URI, and you configured require MFA for all users, ROPC will be blocked by default and you won't be able to authenticate.
+> 
+> Redirect URI is not used in ROPC flow, but it must be added to allow ROPC to work when MFA is required.
 
 ### 2. Application Configuration
 
