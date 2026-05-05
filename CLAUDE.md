@@ -36,7 +36,7 @@ The core architecture implements a resilient authentication pattern:
 1. **Primary Authentication** (`GraphClientService.AuthenticateAsync`):
    - Attempts to authenticate against Microsoft Entra using MSAL (Microsoft.Identity.Client)
    - Uses ROPC flow via `AcquireTokenByUsernamePassword`
-   - On success, returns true and triggers caching
+   - On success, returns `AuthenticationResult?` (the access token is then used to query Graph API for group memberships)
 
 2. **Caching Layer** (`UserCacheService`):
    - Stores successful authentications in IMemoryCache
@@ -56,7 +56,10 @@ Services are registered in `Program.cs`:
 - `IMemoryCache`: Singleton (framework-provided)
 - `IUserCacheService` → `UserCacheService`: Singleton (cache must persist across requests)
 - `GraphClientService`: Scoped (recreated per request)
+- `VlanMappingService`: Scoped
 - `EntraConfiguration`: Options pattern from appsettings.json
+- `VlanConfiguration`: Options pattern from appsettings.json
+- `IHttpClientFactory`: Registered via `AddHttpClient()` (used by `GraphClientService` to call Graph API)
 
 ### Exception Handling Pattern
 
@@ -122,12 +125,14 @@ curl -X POST https://localhost:5001/api/radius/authenticate \
 Controllers/
   RadiusController.cs       - Single API endpoint for authentication
 Services/
-  GraphClientService.cs     - Entra authentication via MSAL
+  GraphClientService.cs     - Entra authentication via MSAL + Graph API group lookup
   UserCacheService.cs       - In-memory cache implementation
   IUserCacheService.cs      - Cache service interface
+  VlanMappingService.cs     - Resolves Entra group GUIDs to VLAN ID
 Models/
-  EntraConfiguration.cs     - Configuration POCO
+  EntraConfiguration.cs     - Entra/MSAL configuration POCO
   RadiusRequest.cs          - API request model
+  VlanConfiguration.cs      - VLAN group mapping configuration POCOs
 Program.cs                  - DI and middleware configuration
 ```
 

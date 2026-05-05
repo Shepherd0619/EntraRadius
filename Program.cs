@@ -19,10 +19,16 @@ namespace EntraRadius
             builder.Services.Configure<EntraConfiguration>(
                 builder.Configuration.GetSection("EntraConfiguration"));
 
+            // Configure VlanConfiguration from appsettings.json
+            builder.Services.Configure<VlanConfiguration>(
+                builder.Configuration.GetSection("VlanConfiguration"));
+
             // Register services
+            builder.Services.AddHttpClient();
             builder.Services.AddMemoryCache();
             builder.Services.AddSingleton<IUserCacheService, UserCacheService>();
             builder.Services.AddScoped<GraphClientService>();
+            builder.Services.AddScoped<VlanMappingService>();
 
             var app = builder.Build();
 

@@ -4,6 +4,8 @@ namespace EntraRadius.Services
 {
     public class UserCacheService : IUserCacheService
     {
+        private readonly record struct CacheEntry(string HashedPassword, int? VlanId);
+
         private readonly IMemoryCache _memoryCache;
         private readonly ILogger<UserCacheService> _logger;
 
@@ -13,44 +15,40 @@ namespace EntraRadius.Services
             _logger = logger;
         }
 
-        public void CacheUser(string username, string password, TimeSpan expiration)
+        public void CacheUser(string username, string password, int? vlanId, TimeSpan expiration)
         {
             var cacheKey = GetCacheKey(username);
-            var hashedPassword = HashPassword(password);
-
-            _memoryCache.Set(cacheKey, hashedPassword, expiration);
+            var entry = new CacheEntry(HashPassword(password), vlanId);
+            _memoryCache.Set(cacheKey, entry, expiration);
             _logger.LogInformation("Cached user {Username} for {Minutes} minutes", username, expiration.TotalMinutes);
         }
 
-        public bool ValidateFromCache(string username, string password)
+        public (bool IsValid, int? VlanId) ValidateFromCache(string username, string password)
         {
             var cacheKey = GetCacheKey(username);
 
-            if (_memoryCache.TryGetValue(cacheKey, out string? cachedHashedPassword))
+            if (_memoryCache.TryGetValue<CacheEntry>(cacheKey, out var entry))
             {
                 var hashedPassword = HashPassword(password);
-                var isValid = cachedHashedPassword == hashedPassword;
+                var isValid = entry.HashedPassword == hashedPassword;
 
                 if (isValid)
                 {
                     _logger.LogInformation("User {Username} validated from cache", username);
+                    return (true, entry.VlanId);
                 }
                 else
                 {
                     _logger.LogWarning("User {Username} found in cache but password mismatch", username);
+                    return (false, null);
                 }
-
-                return isValid;
             }
 
             _logger.LogInformation("User {Username} not found in cache", username);
-            return false;
+            return (false, null);
         }
 
-        private string GetCacheKey(string username)
-        {
-            return $"user:{username.ToLowerInvariant()}";
-        }
+        private string GetCacheKey(string username) => $"user:{username.ToLowerInvariant()}";
 
         private string HashPassword(string password)
         {

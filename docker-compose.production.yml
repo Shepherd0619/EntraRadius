@@ -12,6 +12,11 @@ services:
       # - EntraConfiguration__TenantId=your-tenant-id
       # - EntraConfiguration__ClientId=your-client-id
       # - EntraConfiguration__CacheDurationMinutes=60
+      #
+      # VLAN assignment mapping
+      # - VlanConfiguration__DefaultVlanId=4
+      # - VlanConfiguration__Mappings__0__GroupId=642ab683-0fc6-4537-b783-993c582edfd2
+      # - VlanConfiguration__Mappings__0__VlanId=1
     networks:
       - radius-network
     restart: unless-stopped

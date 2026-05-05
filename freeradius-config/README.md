@@ -189,13 +189,13 @@ Then test with radtest in another terminal.
 2. **Authorize Phase** - FreeRADIUS processes the request and sets Auth-Type to `rest`
 3. **Authenticate Phase** - FreeRADIUS calls the REST module
 4. **REST API Call** - REST module sends POST request to EntraRadius API at `/api/radius/authenticate`
-5. **EntraRadius Processing** - API authenticates against Microsoft Entra or cache
+5. **EntraRadius Processing** - API authenticates against Microsoft Entra or cache; on success, queries Graph API for group memberships and resolves a VLAN ID
 6. **Response Mapping** - HTTP status codes mapped to RADIUS responses:
-   - 200 → Access-Accept
+   - 200 → Access-Accept (may include `reply:Tunnel-*` attributes for VLAN assignment)
    - 401 → Access-Reject
    - 400 → Access-Reject
    - 503 → Access-Reject (with retry possible)
-7. **Post-Auth** - FreeRADIUS sends Access-Accept or Access-Reject to client
+7. **Post-Auth** - FreeRADIUS sends Access-Accept (with VLAN attributes if present) or Access-Reject to client
 
 ### HTTP Status Code Handling
 
@@ -482,6 +482,10 @@ services:
       - EntraConfiguration__TenantId=${TENANT_ID}
       - EntraConfiguration__ClientId=${CLIENT_ID}
       - EntraConfiguration__CacheDurationMinutes=60
+      # VLAN group mappings (add one block per group)
+      - VlanConfiguration__Mappings__0__GroupId=${VLAN100_GROUP_ID}
+      - VlanConfiguration__Mappings__0__VlanId=100
+      - VlanConfiguration__DefaultVlanId=1
     networks:
       - radius-net
 

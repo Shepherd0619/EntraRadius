@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using EntraRadius.Services;
 using EntraRadius.Models;
@@ -11,17 +11,20 @@ namespace EntraRadius.Controllers
     {
         private readonly GraphClientService _graphClientService;
         private readonly IUserCacheService _userCacheService;
+        private readonly VlanMappingService _vlanMappingService;
         private readonly EntraConfiguration _config;
         private readonly ILogger<RadiusController> _logger;
 
         public RadiusController(
             GraphClientService graphClientService,
             IUserCacheService userCacheService,
+            VlanMappingService vlanMappingService,
             IOptions<EntraConfiguration> config,
             ILogger<RadiusController> logger)
         {
             _graphClientService = graphClientService;
             _userCacheService = userCacheService;
+            _vlanMappingService = vlanMappingService;
             _config = config.Value;
             _logger = logger;
         }
@@ -37,17 +40,18 @@ namespace EntraRadius.Controllers
 
             try
             {
-                // Try to authenticate against Entra first
-                var isAuthenticated = await _graphClientService.AuthenticateAsync(request.UserName, request.Password);
+                var authResult = await _graphClientService.AuthenticateAsync(request.UserName, request.Password);
 
-                if (isAuthenticated)
+                if (authResult != null)
                 {
-                    // Cache the successful authentication
+                    var groupIds = await _graphClientService.GetUserGroupsAsync(authResult.AccessToken);
+                    var vlanId = _vlanMappingService.ResolveVlanId(groupIds);
+
                     var cacheDuration = TimeSpan.FromMinutes(_config.CacheDurationMinutes);
-                    _userCacheService.CacheUser(request.UserName, request.Password, cacheDuration);
+                    _userCacheService.CacheUser(request.UserName, request.Password, vlanId, cacheDuration);
 
                     _logger.LogInformation("User {Username} authenticated successfully via Entra", request.UserName);
-                    return Ok(new { message = "Authentication successful", source = "entra" });
+                    return Ok(BuildSuccessResponse("entra", vlanId));
                 }
                 else
                 {
@@ -57,15 +61,14 @@ namespace EntraRadius.Controllers
             }
             catch (EntraServiceException ex)
             {
-                // Entra is unreachable, fallback to cache
                 _logger.LogWarning(ex, "Entra service is unreachable, attempting cache fallback for user {Username}", request.UserName);
 
-                var isValidInCache = _userCacheService.ValidateFromCache(request.UserName, request.Password);
+                var (isValidInCache, cachedVlanId) = _userCacheService.ValidateFromCache(request.UserName, request.Password);
 
                 if (isValidInCache)
                 {
                     _logger.LogInformation("User {Username} authenticated successfully via cache fallback", request.UserName);
-                    return Ok(new { message = "Authentication successful (fallback)", source = "cache" });
+                    return Ok(BuildSuccessResponse("cache", cachedVlanId));
                 }
                 else
                 {
@@ -76,6 +79,24 @@ namespace EntraRadius.Controllers
                     };
                 }
             }
+        }
+
+        private static Dictionary<string, object> BuildSuccessResponse(string source, int? vlanId)
+        {
+            var response = new Dictionary<string, object>
+            {
+                ["message"] = source == "cache" ? "Authentication successful (fallback)" : "Authentication successful",
+                ["source"] = source
+            };
+
+            if (vlanId.HasValue)
+            {
+                response["reply:Tunnel-Type:0"] = "VLAN";
+                response["reply:Tunnel-Medium-Type:0"] = "IEEE-802";
+                response["reply:Tunnel-Private-Group-Id:0"] = vlanId.Value.ToString();
+            }
+
+            return response;
         }
     }
 }
