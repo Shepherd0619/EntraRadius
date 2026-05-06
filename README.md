@@ -17,7 +17,7 @@ User Login → FreeRADIUS → EntraRadius API → Microsoft Entra
 1. **User tries to connect** to your network (VPN, WiFi, etc.)
 2. **FreeRADIUS sends credentials** to EntraRadius via HTTP
 3. **EntraRadius checks with Microsoft Entra** if credentials are valid
-4. **On success**: User gets access + credentials are cached
+4. **On success**: User gets access + VLAN assigned based on Entra group membership + credentials cached
 5. **If Entra is down**: EntraRadius falls back to the cache
 
 This two-tier approach ensures your network stays accessible even when Microsoft services are temporarily unavailable.

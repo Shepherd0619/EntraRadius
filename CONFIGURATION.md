@@ -31,10 +31,28 @@ EntraRadius authenticates users against Microsoft Entra using the ROPC (Resource
 
 > [!WARNING]
 > Adding redirect URI is required to exclude this app from conditional access policies that block ROPC for MFA.
-> 
+>
 > If you don't add a redirect URI, and you configured require MFA for all users, ROPC will be blocked by default and you won't be able to authenticate.
-> 
+>
 > Redirect URI is not used in ROPC flow, but it must be added to allow ROPC to work when MFA is required.
+
+5. **Grant `GroupMember.Read.All` permission** (required for VLAN group assignment):
+   - Go to "API permissions" > "Add a permission" > "Microsoft Graph" > "Delegated permissions"
+   - Search for and add `GroupMember.Read.All`
+   - Click **Grant admin consent**
+
+6. **Exclude Windows Azure Active Directory from Conditional Access**:
+   - Go to Microsoft Entra ID > Protection > Conditional Access
+   - Open any CA policy that enforces MFA or blocks legacy authentication
+   - Under "Cloud apps or actions", add an exclusion for:
+     **Windows Azure Active Directory** (`00000002-0000-0000-c000-000000000000`)
+   - Save the policy
+
+> [!WARNING]
+> Excluding `Windows Azure Active Directory` from CA is required because the ROPC token
+> acquisition and the subsequent Graph API call (`/me/memberOf`) both target this resource.
+> If a CA policy applies to it, authentication will be blocked even if your EntraRadius app
+> registration is excluded.
 
 ### 2. Application Configuration
 
@@ -49,15 +67,36 @@ Update `appsettings.json` with your Entra details:
       "https://graph.microsoft.com/.default"
     ],
     "CacheDurationMinutes": 60
+  },
+  "VlanConfiguration": {
+    "Mappings": [
+      {
+        // Corp-WiFi-VLAN100
+        "GroupId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        "VlanId": 100
+      }
+    ],
+    "DefaultVlanId": null
   }
 }
 ```
 
-**Configuration Options**:
+**EntraConfiguration options**:
 - `TenantId`: Your Azure tenant ID
 - `ClientId`: Your application (client) ID
 - `Scopes`: The scopes to request (typically `https://graph.microsoft.com/.default` for ROPC)
 - `CacheDurationMinutes`: How long to cache successful authentications (default: 60 minutes)
+
+**VlanConfiguration options**:
+- `Mappings`: List of group-to-VLAN mappings. `GroupId` is the Entra group Object ID (GUID). First match wins when a user belongs to multiple mapped groups. Use a `//` comment above each entry to label it (e.g. the group display name) — .NET's config reader supports JSON comments.
+- `DefaultVlanId`: VLAN ID assigned to users who authenticate successfully but belong to no mapped group. Set to `null` to send no VLAN attributes in that case (NAS uses its own default).
+
+> [!WARNING]
+> If your NAS (e.g. UniFi) has **VLAN assignment enabled** on the RADIUS profile, it delegates VLAN
+> placement entirely to RADIUS. When no VLAN attributes are returned, the NAS falls back to the
+> native VLAN (typically VLAN 1), **not** the VLAN configured on the wireless network.
+>
+> To avoid this, set `DefaultVlanId` to the VLAN ID you want as a fallback instead of leaving it `null`.
 
 ### 3. Production Configuration
 
@@ -95,11 +134,22 @@ Or use `appsettings.Production.json`:
 
 **Responses**:
 
-- **200 OK** (Authenticated via Entra):
+- **200 OK** (Authenticated via Entra, no VLAN mapping):
 ```json
 {
   "message": "Authentication successful",
   "source": "entra"
+}
+```
+
+- **200 OK** (Authenticated via Entra, VLAN mapping found):
+```json
+{
+  "message": "Authentication successful",
+  "source": "entra",
+  "reply:Tunnel-Type:0": "VLAN",
+  "reply:Tunnel-Medium-Type:0": "IEEE-802",
+  "reply:Tunnel-Private-Group-Id:0": "100"
 }
 ```
 

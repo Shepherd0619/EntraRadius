@@ -48,9 +48,8 @@ rest {
         # 400 = Bad request (missing credentials)
         # 503 = Service unavailable (Entra down and not in cache)
 
-        # Success condition
-        # Any 2xx response is considered success
-        force_to = 'plain'
+        # Response body is parsed as JSON, allowing reply attributes
+        # (e.g. reply:Tunnel-Type:0) to be injected into the Access-Accept packet.
     }
 
     #
